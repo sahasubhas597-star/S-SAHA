@@ -1,0 +1,6 @@
+{
+  "name": "zx26",
+  "description": "ZX26 institutional-grade algorithmic trading terminal, portfolio risk management, multi-market scanner, Pine Script strategy generator, broker gateway, and AI copilot. Admin: zx26.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
