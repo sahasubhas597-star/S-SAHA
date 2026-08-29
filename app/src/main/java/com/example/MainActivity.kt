@@ -7,6 +7,8 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.material.icons.filled.CurrencyRupee
 import androidx.compose.material.icons.filled.AdminPanelSettings
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.ui.res.painterResource
@@ -62,6 +64,7 @@ import com.example.R
 import com.example.ui.screens.AiCopilotScreen
 import com.example.ui.screens.BacktestLabScreen
 import com.example.ui.screens.BrokerIntegrationScreen
+import com.example.ui.screens.CommercialLicenseScreen
 import com.example.ui.screens.MarketScannerScreen
 import com.example.ui.screens.MarketWorkstationScreen
 import com.example.ui.screens.OptionChainScreen
@@ -108,6 +111,7 @@ fun MainAppScreen(viewModel: MainViewModel) {
 
     val navTabs = listOf(
         NavTabItem("ZX26 Web", Icons.Default.Language, "nav_zx26_web"),
+        NavTabItem("License ₹5k", Icons.Default.CurrencyRupee, "nav_license"),
         NavTabItem("Workstation", Icons.Default.ShowChart, "nav_workstation"),
         NavTabItem("F&O Options", Icons.Default.Layers, "nav_options"),
         NavTabItem("Scanner", Icons.Default.Radar, "nav_scanner"),
@@ -157,18 +161,19 @@ fun MainAppScreen(viewModel: MainViewModel) {
                                     .clip(RoundedCornerShape(4.dp))
                                     .background(BrightGold.copy(alpha = 0.2f))
                                     .border(1.dp, BrightGold.copy(alpha = 0.6f), RoundedCornerShape(4.dp))
+                                    .clickable { viewModel.setTab(1) }
                                     .padding(horizontal = 6.dp, vertical = 2.dp)
                             ) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Icon(
-                                        imageVector = Icons.Default.AdminPanelSettings,
+                                        imageVector = Icons.Default.CurrencyRupee,
                                         contentDescription = null,
                                         tint = BrightGold,
                                         modifier = Modifier.size(11.dp)
                                     )
                                     Spacer(modifier = Modifier.width(3.dp))
                                     Text(
-                                        text = "Admin: zx26",
+                                        text = "₹5,000 License",
                                         color = BrightGold,
                                         fontSize = 9.sp,
                                         fontFamily = FontFamily.Monospace,
@@ -265,15 +270,16 @@ fun MainAppScreen(viewModel: MainViewModel) {
         ) {
             when (currentTab) {
                 0 -> Zx26WebAdminScreen(viewModel = viewModel)
-                1 -> MarketWorkstationScreen(viewModel = viewModel)
-                2 -> OptionChainScreen(viewModel = viewModel)
-                3 -> MarketScannerScreen(viewModel = viewModel)
-                4 -> StrategyBuilderScreen(viewModel = viewModel)
-                5 -> BacktestLabScreen(viewModel = viewModel)
-                6 -> PaperTradingScreen(viewModel = viewModel)
-                7 -> PortfolioRiskScreen(viewModel = viewModel)
-                8 -> BrokerIntegrationScreen(viewModel = viewModel)
-                9 -> AiCopilotScreen(viewModel = viewModel)
+                1 -> CommercialLicenseScreen(viewModel = viewModel)
+                2 -> MarketWorkstationScreen(viewModel = viewModel)
+                3 -> OptionChainScreen(viewModel = viewModel)
+                4 -> MarketScannerScreen(viewModel = viewModel)
+                5 -> StrategyBuilderScreen(viewModel = viewModel)
+                6 -> BacktestLabScreen(viewModel = viewModel)
+                7 -> PaperTradingScreen(viewModel = viewModel)
+                8 -> PortfolioRiskScreen(viewModel = viewModel)
+                9 -> BrokerIntegrationScreen(viewModel = viewModel)
+                10 -> AiCopilotScreen(viewModel = viewModel)
             }
         }
     }

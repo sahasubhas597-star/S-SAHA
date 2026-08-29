@@ -53,6 +53,10 @@ class TradingRepository(private val database: AppDatabase) {
         database.brokerDao().updateConnectionStatus(id, isConnected, latency)
     }
 
+    suspend fun updateAllBrokersStatus(isConnected: Boolean, latency: Long) {
+        database.brokerDao().updateAllBrokersStatus(isConnected, latency)
+    }
+
     suspend fun deleteBroker(id: String) {
         database.brokerDao().deleteBroker(id)
     }

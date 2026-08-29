@@ -1,6 +1,9 @@
 package com.example.ui.screens
 
 import android.widget.Toast
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -10,6 +13,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -19,10 +23,19 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AddShoppingCart
+import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.BarChart
+import androidx.compose.material.icons.filled.Calculate
 import androidx.compose.material.icons.filled.Layers
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Speed
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -32,6 +45,8 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.TabRowDefaults
@@ -39,6 +54,7 @@ import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -57,11 +73,13 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.model.ExecutionMode
 import com.example.data.model.OIBuildupItem
 import com.example.data.model.OIBuildupType
+import com.example.data.model.OptionChainData
 import com.example.data.model.OptionChainStrikeRow
 import com.example.data.model.OptionContract
 import com.example.data.model.OptionStrategyPayoff
@@ -80,7 +98,9 @@ import com.example.ui.theme.TextPrimary
 import com.example.ui.theme.TextSecondary
 import com.example.ui.theme.TextTertiary
 import com.example.ui.viewmodel.MainViewModel
+import kotlinx.coroutines.delay
 import kotlin.math.abs
+import kotlin.math.max
 
 val INDIAN_DERIVATIVE_UNDERLYINGS = listOf(
     "NIFTY 50" to "Index",
@@ -88,16 +108,25 @@ val INDIAN_DERIVATIVE_UNDERLYINGS = listOf(
     "FINNIFTY" to "Index",
     "MIDCPNIFTY" to "Index",
     "SENSEX" to "Index",
+    "BANKEX" to "Index",
+    "NIFTYIT" to "Index",
     "RELIANCE" to "Stock",
-    "TCS" to "Stock",
-    "INFY" to "Stock",
     "HDFCBANK" to "Stock",
     "ICICIBANK" to "Stock",
+    "INFY" to "Stock",
+    "TCS" to "Stock",
     "TATAMOTORS" to "Stock",
     "SBIN" to "Stock",
-    "BAJFINANCE" to "Stock",
     "BHARTIARTL" to "Stock",
-    "LT" to "Stock"
+    "BAJFINANCE" to "Stock",
+    "LT" to "Stock",
+    "MARUTI" to "Stock",
+    "ITC" to "Stock",
+    "TATASTEEL" to "Stock",
+    "KOTAKBANK" to "Stock",
+    "AXISBANK" to "Stock",
+    "ZOMATO" to "Stock",
+    "COALINDIA" to "Stock"
 )
 
 val EXPIRY_CYCLES = listOf(
@@ -107,6 +136,12 @@ val EXPIRY_CYCLES = listOf(
     "25-Sep-2026 (Monthly)",
     "29-Oct-2026 (Monthly)"
 )
+
+enum class OptionChainViewMode(val title: String) {
+    STANDARD("Standard (OI & LTP)"),
+    GREEKS("Greeks (Δ, Γ, θ, ν)"),
+    OI_BARS("OI Distribution Profile")
+}
 
 @Composable
 fun OptionChainScreen(
@@ -123,74 +158,146 @@ fun OptionChainScreen(
     val oiFilter by viewModel.oiBuildupFilter.collectAsState()
 
     var activeSubTab by remember { mutableStateOf(0) } // 0: Option Chain, 1: Strategy Payoffs, 2: OI Buildup
+    var viewMode by remember { mutableStateOf(OptionChainViewMode.STANDARD) }
     var selectedLegOrderContract by remember { mutableStateOf<OptionContract?>(null) }
     var selectedOrderSide by remember { mutableStateOf(OrderSide.BUY) }
     var underlyingFilterCategory by remember { mutableStateOf("ALL") } // ALL, Index, Stock
+    var searchQuery by remember { mutableStateOf("") }
+    var isLiveFeedActive by remember { mutableStateOf(true) }
+    var liveTickFlash by remember { mutableStateOf(false) }
+
+    // Live Market 2-Second Tick Simulation for authentic NSE experience
+    LaunchedEffect(isLiveFeedActive, selectedUnderlying) {
+        while (isLiveFeedActive) {
+            delay(2500)
+            liveTickFlash = !liveTickFlash
+        }
+    }
 
     LazyColumn(
         modifier = modifier
             .fillMaxSize()
-            .padding(horizontal = 14.dp, vertical = 8.dp)
+            .padding(horizontal = 12.dp, vertical = 6.dp)
             .testTag("option_chain_screen"),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
+        verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         // Safety Banner
         item {
             FinancialSafetyBanner(currentMode = ExecutionMode.PAPER_TRADING)
         }
 
-        // Title Header with National Stock Exchange Badge
+        // Live NSE / BSE Market Header & India VIX
         item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+            Card(
+                colors = CardDefaults.cardColors(containerColor = TerminalSurface),
+                shape = RoundedCornerShape(10.dp),
+                border = androidx.compose.foundation.BorderStroke(1.dp, TerminalCardBorder),
+                modifier = Modifier.fillMaxWidth()
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(imageVector = Icons.Default.Layers, contentDescription = null, tint = NeonCyan, modifier = Modifier.size(22.dp))
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Column {
-                        Text(
-                            text = "INDIAN DERIVATIVES & F&O",
-                            color = TextPrimary,
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Bold,
-                            letterSpacing = 0.5.sp
-                        )
-                        Text(
-                            text = "NSE / BSE Live Option Chain & Black-Scholes Greeks Engine",
-                            color = TextSecondary,
-                            fontSize = 10.sp
-                        )
-                    }
-                }
+                Column(modifier = Modifier.padding(10.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(8.dp)
+                                    .clip(CircleShape)
+                                    .background(if (isLiveFeedActive) BullishGreen else TextTertiary)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "NSE / BSE LIVE OPTION CHAIN",
+                                color = TextPrimary,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                letterSpacing = 0.5.sp
+                            )
+                        }
 
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(4.dp))
-                        .background(TerminalSurfaceElevated)
-                        .border(1.dp, NeonCyan.copy(alpha = 0.5f), RoundedCornerShape(4.dp))
-                        .padding(horizontal = 6.dp, vertical = 3.dp)
-                ) {
-                    Text(
-                        text = "NSE • F&O",
-                        color = NeonCyan,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold,
-                        fontFamily = FontFamily.Monospace
-                    )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .background(BrightGold.copy(alpha = 0.15f))
+                                    .border(1.dp, BrightGold.copy(alpha = 0.5f), RoundedCornerShape(4.dp))
+                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                            ) {
+                                Text(
+                                    text = "INDIA VIX: 13.45 (-1.8%)",
+                                    color = BrightGold,
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    fontFamily = FontFamily.Monospace
+                                )
+                            }
+
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .background(if (isLiveFeedActive) BullishGreen.copy(alpha = 0.15f) else TerminalSurfaceElevated)
+                                    .clickable { isLiveFeedActive = !isLiveFeedActive }
+                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                            ) {
+                                Text(
+                                    text = if (isLiveFeedActive) "● LIVE FEED" else "PAUSED",
+                                    color = if (isLiveFeedActive) BullishGreen else TextTertiary,
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                    }
+
+                    // Mini Ticker for key Indian Indices
+                    Spacer(modifier = Modifier.height(6.dp))
+                    LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        item {
+                            IndexChip(name = "NIFTY", price = "24,852.40", change = "+182.10 (+0.74%)", isUp = true) {
+                                viewModel.selectOptionUnderlying("NIFTY 50")
+                            }
+                        }
+                        item {
+                            IndexChip(name = "BANKNIFTY", price = "51,340.80", change = "+425.60 (+0.84%)", isUp = true) {
+                                viewModel.selectOptionUnderlying("BANKNIFTY")
+                            }
+                        }
+                        item {
+                            IndexChip(name = "FINNIFTY", price = "23,145.20", change = "+168.40 (+0.73%)", isUp = true) {
+                                viewModel.selectOptionUnderlying("FINNIFTY")
+                            }
+                        }
+                        item {
+                            IndexChip(name = "MIDCPNIFTY", price = "12,890.50", change = "+142.30 (+1.12%)", isUp = true) {
+                                viewModel.selectOptionUnderlying("MIDCPNIFTY")
+                            }
+                        }
+                        item {
+                            IndexChip(name = "SENSEX", price = "81,480.00", change = "+595.00 (+0.74%)", isUp = true) {
+                                viewModel.selectOptionUnderlying("SENSEX")
+                            }
+                        }
+                    }
                 }
             }
         }
 
-        // Sub-Navigation: Option Chain, Strategy Payoff, OI Buildup
+        // Sub-Navigation Tabs: Option Chain, Strategy Payoff, OI Buildup
         item {
             TabRow(
                 selectedTabIndex = activeSubTab,
                 containerColor = TerminalSurface,
                 contentColor = NeonCyan,
                 indicator = { tabPositions ->
-                    TabRowDefaults.Indicator(
+                    TabRowDefaults.SecondaryIndicator(
                         Modifier.tabIndicatorOffset(tabPositions[activeSubTab]),
                         color = NeonCyan,
                         height = 2.5.dp
@@ -216,28 +323,57 @@ fun OptionChainScreen(
             }
         }
 
-        // Underlying Instrument Selector Bar
+        // Underlying Filter & Chips
         item {
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Row(
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    listOf("ALL" to "All F&O", "Index" to "🇮🇳 Indices", "Stock" to "🏢 Stocks").forEach { (key, label) ->
-                        FilterChip(
-                            selected = underlyingFilterCategory == key,
-                            onClick = { underlyingFilterCategory = key },
-                            label = { Text(label, fontSize = 11.sp) },
-                            colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = ElectricIndigo.copy(alpha = 0.3f),
-                                selectedLabelColor = ElectricIndigo
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        listOf("ALL" to "All F&O", "Index" to "🇮🇳 Indices", "Stock" to "🏢 Stocks").forEach { (key, label) ->
+                            FilterChip(
+                                selected = underlyingFilterCategory == key,
+                                onClick = { underlyingFilterCategory = key },
+                                label = { Text(label, fontSize = 11.sp) },
+                                colors = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = ElectricIndigo.copy(alpha = 0.3f),
+                                    selectedLabelColor = ElectricIndigo
+                                )
                             )
-                        )
+                        }
+                    }
+
+                    // Search input toggle
+                    IconButton(
+                        onClick = { searchQuery = if (searchQuery.isEmpty()) " " else "" },
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(imageVector = Icons.Default.Search, contentDescription = "Search", tint = NeonCyan, modifier = Modifier.size(18.dp))
                     }
                 }
 
+                if (searchQuery.isNotEmpty()) {
+                    OutlinedTextField(
+                        value = searchQuery.trim(),
+                        onValueChange = { searchQuery = it },
+                        placeholder = { Text("Search NSE/BSE F&O Underlyings...", color = TextTertiary, fontSize = 11.sp) },
+                        modifier = Modifier.fillMaxWidth().height(48.dp),
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = NeonCyan,
+                            unfocusedBorderColor = TerminalCardBorder,
+                            focusedTextColor = TextPrimary,
+                            unfocusedTextColor = TextPrimary
+                        ),
+                        shape = RoundedCornerShape(8.dp)
+                    )
+                }
+
                 val filteredUnderlyings = INDIAN_DERIVATIVE_UNDERLYINGS.filter {
-                    underlyingFilterCategory == "ALL" || it.second == underlyingFilterCategory
+                    (underlyingFilterCategory == "ALL" || it.second == underlyingFilterCategory) &&
+                    (searchQuery.isBlank() || it.first.contains(searchQuery.trim(), ignoreCase = true))
                 }
 
                 LazyRow(
@@ -274,14 +410,14 @@ fun OptionChainScreen(
             }
         }
 
-        // Expiry Selector
+        // Expiry Selector Bar
         item {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(text = "EXPIRY CYCLE:", color = BrightGold, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                Text(text = "EXPIRY:", color = BrightGold, fontSize = 10.sp, fontWeight = FontWeight.Bold)
 
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     items(EXPIRY_CYCLES) { exp ->
@@ -289,7 +425,7 @@ fun OptionChainScreen(
                         Box(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(4.dp))
-                                .background(if (isSelected) BrightGold.copy(alpha = 0.2f) else TerminalSurface)
+                                .background(if (isSelected) BrightGold.copy(alpha = 0.25f) else TerminalSurface)
                                 .border(1.dp, if (isSelected) BrightGold else TerminalCardBorder, RoundedCornerShape(4.dp))
                                 .clickable { viewModel.selectOptionExpiry(exp) }
                                 .padding(horizontal = 8.dp, vertical = 4.dp)
@@ -307,10 +443,16 @@ fun OptionChainScreen(
             }
         }
 
-        // Derivatives Snapshot Bar
+        // Selected Underlying Snapshot Card
         if (optionChainData != null) {
             val data = optionChainData!!
             val atmStrikeVal = data.strikes.firstOrNull { it.isATM }?.strikePrice ?: data.underlyingPrice
+            val pcrInterpretation = when {
+                data.pcr >= 1.3 -> "Strongly Bullish"
+                data.pcr >= 1.0 -> "Mildly Bullish"
+                data.pcr >= 0.8 -> "Neutral"
+                else -> "Bearish"
+            }
 
             item {
                 Card(
@@ -326,9 +468,21 @@ fun OptionChainScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Column {
-                                Text(text = data.underlyingSymbol, color = TextPrimary, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                                Text(text = "Lot Size: ${data.lotSize} units", color = TextSecondary, fontSize = 11.sp)
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(text = data.underlyingSymbol, color = TextPrimary, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(3.dp))
+                                            .background(NeonCyan.copy(alpha = 0.2f))
+                                            .padding(horizontal = 4.dp, vertical = 1.dp)
+                                    ) {
+                                        Text(text = "Lot: ${data.lotSize}", color = NeonCyan, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                                Text(text = data.underlyingName, color = TextSecondary, fontSize = 10.sp)
                             }
+
                             Column(horizontalAlignment = Alignment.End) {
                                 Text(
                                     text = "₹${String.format("%.2f", data.underlyingPrice)}",
@@ -348,18 +502,51 @@ fun OptionChainScreen(
 
                         Spacer(modifier = Modifier.height(8.dp))
 
+                        // Quantitative Derivative Metrics Bar
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clip(RoundedCornerShape(6.dp))
                                 .background(TerminalSurfaceElevated)
-                                .padding(horizontal = 10.dp, vertical = 6.dp),
+                                .padding(horizontal = 8.dp, vertical = 6.dp),
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            AnalyticsItem(label = "PCR (OI)", value = "${data.pcr}", color = if (data.pcr >= 1.0) BullishGreen else BearishRed)
-                            AnalyticsItem(label = "Max Pain", value = "₹${data.maxPainStrike.toInt()}", color = BrightGold)
-                            AnalyticsItem(label = "Total Call OI", value = "${String.format("%.1f", data.totalCallOI / 100000.0)}L", color = BearishRed)
-                            AnalyticsItem(label = "Total Put OI", value = "${String.format("%.1f", data.totalPutOI / 100000.0)}L", color = BullishGreen)
+                            AnalyticsItem(
+                                label = "PCR (OI)",
+                                value = "${data.pcr} ($pcrInterpretation)",
+                                color = if (data.pcr >= 1.0) BullishGreen else BearishRed
+                            )
+                            AnalyticsItem(
+                                label = "Max Pain",
+                                value = "₹${data.maxPainStrike.toInt()}",
+                                color = BrightGold
+                            )
+                            AnalyticsItem(
+                                label = "Total Call OI",
+                                value = "${String.format("%.1f", data.totalCallOI / 100000.0)}L",
+                                color = BearishRed
+                            )
+                            AnalyticsItem(
+                                label = "Total Put OI",
+                                value = "${String.format("%.1f", data.totalPutOI / 100000.0)}L",
+                                color = BullishGreen
+                            )
+                        }
+
+                        // OI Ratio Visual Meter
+                        Spacer(modifier = Modifier.height(6.dp))
+                        val totalOiCombined = max(1L, data.totalCallOI + data.totalPutOI)
+                        val callShare = (data.totalCallOI.toFloat() / totalOiCombined.toFloat())
+                        val putShare = (data.totalPutOI.toFloat() / totalOiCombined.toFloat())
+
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(4.dp)
+                                .clip(RoundedCornerShape(2.dp))
+                        ) {
+                            Box(modifier = Modifier.weight(callShare).fillMaxHeight().background(BearishRed))
+                            Box(modifier = Modifier.weight(putShare).fillMaxHeight().background(BullishGreen))
                         }
                     }
                 }
@@ -369,10 +556,44 @@ fun OptionChainScreen(
         // Sub-Tab Content
         when (activeSubTab) {
             0 -> {
+                // View Mode Switcher: Standard, Greeks, OI Bars
+                item {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(text = "VIEW MODE:", color = TextTertiary, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+
+                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            OptionChainViewMode.values().forEach { mode ->
+                                val isSelected = mode == viewMode
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(4.dp))
+                                        .background(if (isSelected) NeonCyan.copy(alpha = 0.2f) else TerminalSurface)
+                                        .border(1.dp, if (isSelected) NeonCyan else TerminalCardBorder, RoundedCornerShape(4.dp))
+                                        .clickable { viewMode = mode }
+                                        .padding(horizontal = 6.dp, vertical = 3.dp)
+                                ) {
+                                    Text(
+                                        text = mode.title.substringBefore(" "),
+                                        color = if (isSelected) NeonCyan else TextSecondary,
+                                        fontSize = 10.sp,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
                 if (optionChainData != null) {
                     val data = optionChainData!!
+                    val maxOiInChain = max(1L, data.strikes.maxOfOrNull { max(it.call.openInterest, it.put.openInterest) } ?: 1L)
+
                     item {
-                        OptionChainHeader()
+                        OptionChainHeader(viewMode = viewMode)
                     }
 
                     items(data.strikes) { strikeRow ->
@@ -380,6 +601,8 @@ fun OptionChainScreen(
                             strikeRow = strikeRow,
                             spotPrice = data.underlyingPrice,
                             isAtm = strikeRow.isATM,
+                            viewMode = viewMode,
+                            maxOiInChain = maxOiInChain,
                             onTradeCall = { contract, side ->
                                 selectedLegOrderContract = contract
                                 selectedOrderSide = side
@@ -400,8 +623,8 @@ fun OptionChainScreen(
                         payoff = strategyPayoff,
                         onSelectStrategy = { viewModel.selectOptionStrategyType(it) },
                         onExecuteBasket = {
-                            strategyPayoff?.let {
-                                viewModel.executeMultiLegStrategy(it)
+                            strategyPayoff?.let { p ->
+                                viewModel.executeMultiLegStrategy(p)
                                 Toast.makeText(context, "Multi-Leg Option Strategy Placed in Paper Account!", Toast.LENGTH_LONG).show()
                             }
                         }
@@ -414,7 +637,7 @@ fun OptionChainScreen(
                     OIBuildupSection(
                         buildupList = oiBuildups,
                         selectedFilter = oiFilter,
-                        onFilterChange = { viewModel.setOIBuildupFilter(it) },
+                        onFilterChange = { filterType -> viewModel.setOIBuildupFilter(filterType) },
                         onSelectUnderlying = { sym ->
                             viewModel.selectOptionUnderlying(sym)
                             activeSubTab = 0
@@ -447,6 +670,27 @@ fun OptionChainScreen(
 }
 
 @Composable
+private fun IndexChip(name: String, price: String, change: String, isUp: Boolean, onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(6.dp))
+            .background(TerminalSurfaceElevated)
+            .border(0.5.dp, TerminalCardBorder, RoundedCornerShape(6.dp))
+            .clickable { onClick() }
+            .padding(horizontal = 8.dp, vertical = 4.dp)
+    ) {
+        Column {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(text = name, color = TextPrimary, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(text = price, color = TextPrimary, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
+            }
+            Text(text = change, color = if (isUp) BullishGreen else BearishRed, fontSize = 8.sp, fontFamily = FontFamily.Monospace)
+        }
+    }
+}
+
+@Composable
 private fun AnalyticsItem(label: String, value: String, color: Color = TextPrimary) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Text(text = label, color = TextTertiary, fontSize = 9.sp)
@@ -455,7 +699,7 @@ private fun AnalyticsItem(label: String, value: String, color: Color = TextPrima
 }
 
 @Composable
-private fun OptionChainHeader() {
+private fun OptionChainHeader(viewMode: OptionChainViewMode) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -465,25 +709,71 @@ private fun OptionChainHeader() {
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Row(modifier = Modifier.weight(1f), horizontalArrangement = Arrangement.SpaceEvenly) {
-            Text(text = "CALL OI", color = BearishRed, fontSize = 9.sp, fontWeight = FontWeight.Bold)
-            Text(text = "IV%", color = TextTertiary, fontSize = 9.sp)
-            Text(text = "Δ Delta", color = TextTertiary, fontSize = 9.sp)
-            Text(text = "CALL LTP", color = BullishGreen, fontSize = 9.sp, fontWeight = FontWeight.Bold)
-        }
+        when (viewMode) {
+            OptionChainViewMode.STANDARD -> {
+                Row(modifier = Modifier.weight(1f), horizontalArrangement = Arrangement.SpaceEvenly) {
+                    Text(text = "CALL OI", color = BearishRed, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                    Text(text = "IV%", color = TextTertiary, fontSize = 9.sp)
+                    Text(text = "Δ Delta", color = TextTertiary, fontSize = 9.sp)
+                    Text(text = "CALL LTP", color = BullishGreen, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                }
 
-        Box(
-            modifier = Modifier.width(62.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(text = "STRIKE", color = BrightGold, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-        }
+                Box(
+                    modifier = Modifier.width(62.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(text = "STRIKE", color = BrightGold, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                }
 
-        Row(modifier = Modifier.weight(1f), horizontalArrangement = Arrangement.SpaceEvenly) {
-            Text(text = "PUT LTP", color = BearishRed, fontSize = 9.sp, fontWeight = FontWeight.Bold)
-            Text(text = "Δ Delta", color = TextTertiary, fontSize = 9.sp)
-            Text(text = "IV%", color = TextTertiary, fontSize = 9.sp)
-            Text(text = "PUT OI", color = BullishGreen, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                Row(modifier = Modifier.weight(1f), horizontalArrangement = Arrangement.SpaceEvenly) {
+                    Text(text = "PUT LTP", color = BearishRed, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                    Text(text = "Δ Delta", color = TextTertiary, fontSize = 9.sp)
+                    Text(text = "IV%", color = TextTertiary, fontSize = 9.sp)
+                    Text(text = "PUT OI", color = BullishGreen, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+
+            OptionChainViewMode.GREEKS -> {
+                Row(modifier = Modifier.weight(1f), horizontalArrangement = Arrangement.SpaceEvenly) {
+                    Text(text = "Δ Delta", color = TextSecondary, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                    Text(text = "Γ Gamma", color = TextTertiary, fontSize = 9.sp)
+                    Text(text = "θ Theta", color = TextTertiary, fontSize = 9.sp)
+                    Text(text = "ν Vega", color = TextTertiary, fontSize = 9.sp)
+                }
+
+                Box(
+                    modifier = Modifier.width(62.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(text = "STRIKE", color = BrightGold, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                }
+
+                Row(modifier = Modifier.weight(1f), horizontalArrangement = Arrangement.SpaceEvenly) {
+                    Text(text = "ν Vega", color = TextTertiary, fontSize = 9.sp)
+                    Text(text = "θ Theta", color = TextTertiary, fontSize = 9.sp)
+                    Text(text = "Γ Gamma", color = TextTertiary, fontSize = 9.sp)
+                    Text(text = "Δ Delta", color = TextSecondary, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+
+            OptionChainViewMode.OI_BARS -> {
+                Row(modifier = Modifier.weight(1f), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Text(text = "CALL OI PROFILE", color = BearishRed, fontSize = 9.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 4.dp))
+                    Text(text = "LTP", color = BullishGreen, fontSize = 9.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(end = 4.dp))
+                }
+
+                Box(
+                    modifier = Modifier.width(62.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(text = "STRIKE", color = BrightGold, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                }
+
+                Row(modifier = Modifier.weight(1f), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Text(text = "LTP", color = BearishRed, fontSize = 9.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 4.dp))
+                    Text(text = "PUT OI PROFILE", color = BullishGreen, fontSize = 9.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(end = 4.dp))
+                }
+            }
         }
     }
 }
@@ -493,6 +783,8 @@ private fun OptionStrikeRowView(
     strikeRow: OptionChainStrikeRow,
     spotPrice: Double,
     isAtm: Boolean,
+    viewMode: OptionChainViewMode,
+    maxOiInChain: Long,
     onTradeCall: (OptionContract, OrderSide) -> Unit,
     onTradePut: (OptionContract, OrderSide) -> Unit
 ) {
@@ -501,8 +793,9 @@ private fun OptionStrikeRowView(
     val isCallItm = strikeRow.strikePrice < spotPrice
     val isPutItm = strikeRow.strikePrice > spotPrice
 
-    val callBg = if (isAtm) NeonCyan.copy(alpha = 0.15f) else if (isCallItm) BrightGold.copy(alpha = 0.08f) else TerminalSurface
-    val putBg = if (isAtm) NeonCyan.copy(alpha = 0.15f) else if (isPutItm) BrightGold.copy(alpha = 0.08f) else TerminalSurface
+    // Authentic NSE Yellow tint for In-The-Money options
+    val callBg = if (isAtm) NeonCyan.copy(alpha = 0.18f) else if (isCallItm) BrightGold.copy(alpha = 0.08f) else TerminalSurface
+    val putBg = if (isAtm) NeonCyan.copy(alpha = 0.18f) else if (isPutItm) BrightGold.copy(alpha = 0.08f) else TerminalSurface
 
     Card(
         colors = CardDefaults.cardColors(containerColor = TerminalSurface),
@@ -514,61 +807,116 @@ private fun OptionStrikeRowView(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // CALLS SIDE
-            Row(
+            // ================== CALLS SIDE ==================
+            Box(
                 modifier = Modifier
                     .weight(1f)
                     .background(callBg)
                     .clickable { onTradeCall(call, OrderSide.BUY) }
-                    .padding(vertical = 8.dp, horizontal = 4.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                    .padding(vertical = 6.dp, horizontal = 4.dp)
             ) {
-                Text(
-                    text = "${(call.openInterest / 1000)}k",
-                    color = TextSecondary,
-                    fontSize = 10.sp,
-                    fontFamily = FontFamily.Monospace,
-                    modifier = Modifier.weight(1f),
-                    textAlign = TextAlign.Start
-                )
-                Text(
-                    text = "${String.format("%.1f", call.greeks.iv)}%",
-                    color = TextTertiary,
-                    fontSize = 9.sp,
-                    modifier = Modifier.weight(0.8f),
-                    textAlign = TextAlign.Center
-                )
-                Text(
-                    text = String.format("%.2f", call.greeks.delta),
-                    color = TextSecondary,
-                    fontSize = 9.sp,
-                    fontFamily = FontFamily.Monospace,
-                    modifier = Modifier.weight(0.8f),
-                    textAlign = TextAlign.Center
-                )
-                Column(modifier = Modifier.weight(1.1f), horizontalAlignment = Alignment.End) {
-                    Text(
-                        text = "₹${String.format("%.2f", call.ltp)}",
-                        color = if (call.changePercent >= 0) BullishGreen else BearishRed,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        fontFamily = FontFamily.Monospace
-                    )
-                    Text(
-                        text = "${if (call.changePercent >= 0) "+" else ""}${String.format("%.1f", call.changePercent)}%",
-                        color = if (call.changePercent >= 0) BullishGreen else BearishRed,
-                        fontSize = 8.sp
-                    )
+                when (viewMode) {
+                    OptionChainViewMode.STANDARD -> {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "${(call.openInterest / 1000)}k",
+                                color = TextSecondary,
+                                fontSize = 10.sp,
+                                fontFamily = FontFamily.Monospace,
+                                modifier = Modifier.weight(1f),
+                                textAlign = TextAlign.Start
+                            )
+                            Text(
+                                text = "${String.format("%.1f", call.greeks.iv)}%",
+                                color = TextTertiary,
+                                fontSize = 9.sp,
+                                modifier = Modifier.weight(0.8f),
+                                textAlign = TextAlign.Center
+                            )
+                            Text(
+                                text = String.format("%.2f", call.greeks.delta),
+                                color = TextSecondary,
+                                fontSize = 9.sp,
+                                fontFamily = FontFamily.Monospace,
+                                modifier = Modifier.weight(0.8f),
+                                textAlign = TextAlign.Center
+                            )
+                            Column(modifier = Modifier.weight(1.1f), horizontalAlignment = Alignment.End) {
+                                Text(
+                                    text = "₹${String.format("%.2f", call.ltp)}",
+                                    color = if (call.changePercent >= 0) BullishGreen else BearishRed,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    fontFamily = FontFamily.Monospace
+                                )
+                                Text(
+                                    text = "${if (call.changePercent >= 0) "+" else ""}${String.format("%.1f", call.changePercent)}%",
+                                    color = if (call.changePercent >= 0) BullishGreen else BearishRed,
+                                    fontSize = 8.sp
+                                )
+                            }
+                        }
+                    }
+
+                    OptionChainViewMode.GREEKS -> {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceEvenly,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(text = String.format("%.2f", call.greeks.delta), color = TextPrimary, fontSize = 9.sp, fontFamily = FontFamily.Monospace)
+                            Text(text = String.format("%.3f", call.greeks.gamma), color = TextSecondary, fontSize = 9.sp, fontFamily = FontFamily.Monospace)
+                            Text(text = String.format("%.1f", call.greeks.theta), color = BearishRed, fontSize = 9.sp, fontFamily = FontFamily.Monospace)
+                            Text(text = String.format("%.1f", call.greeks.vega), color = BrightGold, fontSize = 9.sp, fontFamily = FontFamily.Monospace)
+                        }
+                    }
+
+                    OptionChainViewMode.OI_BARS -> {
+                        val callOiFraction = (call.openInterest.toFloat() / maxOiInChain.toFloat()).coerceIn(0.05f, 1f)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            // Call OI horizontal bar
+                            Row(
+                                modifier = Modifier.weight(1f).height(16.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth(callOiFraction)
+                                        .height(10.dp)
+                                        .clip(RoundedCornerShape(2.dp))
+                                        .background(BearishRed.copy(alpha = 0.65f))
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(text = "${call.openInterest / 1000}k", color = TextTertiary, fontSize = 8.sp)
+                            }
+
+                            Text(
+                                text = "₹${String.format("%.1f", call.ltp)}",
+                                color = TextPrimary,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = FontFamily.Monospace,
+                                modifier = Modifier.padding(start = 4.dp)
+                            )
+                        }
+                    }
                 }
             }
 
-            // STRIKE PRICE COLUMN
+            // ================== STRIKE PRICE COLUMN ==================
             Box(
                 modifier = Modifier
                     .width(64.dp)
                     .background(if (isAtm) NeonCyan else TerminalSurfaceElevated)
-                    .padding(vertical = 8.dp),
+                    .padding(vertical = 6.dp),
                 contentAlignment = Alignment.Center
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -585,53 +933,109 @@ private fun OptionStrikeRowView(
                 }
             }
 
-            // PUTS SIDE
-            Row(
+            // ================== PUTS SIDE ==================
+            Box(
                 modifier = Modifier
                     .weight(1f)
                     .background(putBg)
                     .clickable { onTradePut(put, OrderSide.BUY) }
-                    .padding(vertical = 8.dp, horizontal = 4.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                    .padding(vertical = 6.dp, horizontal = 4.dp)
             ) {
-                Column(modifier = Modifier.weight(1.1f), horizontalAlignment = Alignment.Start) {
-                    Text(
-                        text = "₹${String.format("%.2f", put.ltp)}",
-                        color = if (put.changePercent >= 0) BullishGreen else BearishRed,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        fontFamily = FontFamily.Monospace
-                    )
-                    Text(
-                        text = "${if (put.changePercent >= 0) "+" else ""}${String.format("%.1f", put.changePercent)}%",
-                        color = if (put.changePercent >= 0) BullishGreen else BearishRed,
-                        fontSize = 8.sp
-                    )
+                when (viewMode) {
+                    OptionChainViewMode.STANDARD -> {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1.1f), horizontalAlignment = Alignment.Start) {
+                                Text(
+                                    text = "₹${String.format("%.2f", put.ltp)}",
+                                    color = if (put.changePercent >= 0) BullishGreen else BearishRed,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    fontFamily = FontFamily.Monospace
+                                )
+                                Text(
+                                    text = "${if (put.changePercent >= 0) "+" else ""}${String.format("%.1f", put.changePercent)}%",
+                                    color = if (put.changePercent >= 0) BullishGreen else BearishRed,
+                                    fontSize = 8.sp
+                                )
+                            }
+                            Text(
+                                text = String.format("%.2f", put.greeks.delta),
+                                color = TextSecondary,
+                                fontSize = 9.sp,
+                                fontFamily = FontFamily.Monospace,
+                                modifier = Modifier.weight(0.8f),
+                                textAlign = TextAlign.Center
+                            )
+                            Text(
+                                text = "${String.format("%.1f", put.greeks.iv)}%",
+                                color = TextTertiary,
+                                fontSize = 9.sp,
+                                modifier = Modifier.weight(0.8f),
+                                textAlign = TextAlign.Center
+                            )
+                            Text(
+                                text = "${(put.openInterest / 1000)}k",
+                                color = TextSecondary,
+                                fontSize = 10.sp,
+                                fontFamily = FontFamily.Monospace,
+                                modifier = Modifier.weight(1f),
+                                textAlign = TextAlign.End
+                            )
+                        }
+                    }
+
+                    OptionChainViewMode.GREEKS -> {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceEvenly,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(text = String.format("%.1f", put.greeks.vega), color = BrightGold, fontSize = 9.sp, fontFamily = FontFamily.Monospace)
+                            Text(text = String.format("%.1f", put.greeks.theta), color = BearishRed, fontSize = 9.sp, fontFamily = FontFamily.Monospace)
+                            Text(text = String.format("%.3f", put.greeks.gamma), color = TextSecondary, fontSize = 9.sp, fontFamily = FontFamily.Monospace)
+                            Text(text = String.format("%.2f", put.greeks.delta), color = TextPrimary, fontSize = 9.sp, fontFamily = FontFamily.Monospace)
+                        }
+                    }
+
+                    OptionChainViewMode.OI_BARS -> {
+                        val putOiFraction = (put.openInterest.toFloat() / maxOiInChain.toFloat()).coerceIn(0.05f, 1f)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "₹${String.format("%.1f", put.ltp)}",
+                                color = TextPrimary,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = FontFamily.Monospace,
+                                modifier = Modifier.padding(end = 4.dp)
+                            )
+
+                            // Put OI horizontal bar
+                            Row(
+                                modifier = Modifier.weight(1f).height(16.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.End
+                            ) {
+                                Text(text = "${put.openInterest / 1000}k", color = TextTertiary, fontSize = 8.sp)
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth(putOiFraction)
+                                        .height(10.dp)
+                                        .clip(RoundedCornerShape(2.dp))
+                                        .background(BullishGreen.copy(alpha = 0.65f))
+                                )
+                            }
+                        }
+                    }
                 }
-                Text(
-                    text = String.format("%.2f", put.greeks.delta),
-                    color = TextSecondary,
-                    fontSize = 9.sp,
-                    fontFamily = FontFamily.Monospace,
-                    modifier = Modifier.weight(0.8f),
-                    textAlign = TextAlign.Center
-                )
-                Text(
-                    text = "${String.format("%.1f", put.greeks.iv)}%",
-                    color = TextTertiary,
-                    fontSize = 9.sp,
-                    modifier = Modifier.weight(0.8f),
-                    textAlign = TextAlign.Center
-                )
-                Text(
-                    text = "${(put.openInterest / 1000)}k",
-                    color = TextSecondary,
-                    fontSize = 10.sp,
-                    fontFamily = FontFamily.Monospace,
-                    modifier = Modifier.weight(1f),
-                    textAlign = TextAlign.End
-                )
             }
         }
     }
@@ -645,24 +1049,54 @@ private fun StrategyPayoffSection(
     onExecuteBasket: () -> Unit
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text(
-            text = "SELECT STRATEGY BLUEPRINT",
-            color = BrightGold,
-            fontSize = 11.sp,
-            fontWeight = FontWeight.Bold,
-            letterSpacing = 0.5.sp
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "SELECT STRATEGY BLUEPRINT",
+                color = BrightGold,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 0.5.sp
+            )
+
+            if (selectedStrategy == OptionStrategyType.BATMAN_STRATEGY) {
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(BrightGold.copy(alpha = 0.2f))
+                        .border(1.dp, BrightGold.copy(alpha = 0.6f), RoundedCornerShape(4.dp))
+                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                ) {
+                    Text(
+                        text = "🦇 DUAL EAR PAYOFF",
+                        color = BrightGold,
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.ExtraBold
+                    )
+                }
+            }
+        }
 
         LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             items(OptionStrategyType.values()) { strat ->
                 val isSelected = strat == selectedStrategy
+                val isBatman = strat == OptionStrategyType.BATMAN_STRATEGY
                 FilterChip(
                     selected = isSelected,
                     onClick = { onSelectStrategy(strat) },
-                    label = { Text(strat.title, fontSize = 11.sp) },
+                    label = { 
+                        Text(
+                            text = if (isBatman) "🦇 ${strat.title}" else strat.title, 
+                            fontSize = 11.sp,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                        ) 
+                    },
                     colors = FilterChipDefaults.filterChipColors(
-                        selectedContainerColor = NeonCyan.copy(alpha = 0.25f),
-                        selectedLabelColor = NeonCyan
+                        selectedContainerColor = if (isBatman) BrightGold.copy(alpha = 0.3f) else NeonCyan.copy(alpha = 0.25f),
+                        selectedLabelColor = if (isBatman) BrightGold else NeonCyan
                     )
                 )
             }
@@ -682,8 +1116,13 @@ private fun StrategyPayoffSection(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Column {
-                            Text(text = payoff.strategyType.title, color = TextPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                            Text(text = "${payoff.underlyingSymbol} • ${payoff.legs.size} Legs", color = TextSecondary, fontSize = 11.sp)
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                if (payoff.strategyType == OptionStrategyType.BATMAN_STRATEGY) {
+                                    Text(text = "🦇 ", fontSize = 16.sp)
+                                }
+                                Text(text = payoff.strategyType.title, color = TextPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                            }
+                            Text(text = "${payoff.underlyingSymbol} • ${payoff.legs.size} Legs • ${payoff.strategyType.outlook}", color = TextSecondary, fontSize = 11.sp)
                         }
 
                         Box(
@@ -704,7 +1143,31 @@ private fun StrategyPayoffSection(
 
                     Spacer(modifier = Modifier.height(10.dp))
 
-                    PayoffGraphCanvas(payoffPoints = payoff.payoffPoints, breakevens = payoff.breakevens)
+                    // Dynamic Payoff Graph
+                    PayoffGraphCanvas(
+                        payoffPoints = payoff.payoffPoints,
+                        breakevens = payoff.breakevens,
+                        isBatmanStrategy = payoff.strategyType == OptionStrategyType.BATMAN_STRATEGY
+                    )
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    // Strategy Explanation / Insight Banner
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(if (payoff.strategyType == OptionStrategyType.BATMAN_STRATEGY) BrightGold.copy(alpha = 0.08f) else ElectricIndigo.copy(alpha = 0.08f))
+                            .border(0.5.dp, if (payoff.strategyType == OptionStrategyType.BATMAN_STRATEGY) BrightGold.copy(alpha = 0.3f) else ElectricIndigo.copy(alpha = 0.3f), RoundedCornerShape(6.dp))
+                            .padding(8.dp)
+                    ) {
+                        Text(
+                            text = payoff.strategyType.description,
+                            color = TextSecondary,
+                            fontSize = 10.sp,
+                            lineHeight = 14.sp
+                        )
+                    }
 
                     Spacer(modifier = Modifier.height(10.dp))
 
@@ -717,7 +1180,7 @@ private fun StrategyPayoffSection(
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Column {
-                            Text(text = "Max Profit", color = TextTertiary, fontSize = 9.sp)
+                            Text(text = "Max Profit (Peak)", color = TextTertiary, fontSize = 9.sp)
                             Text(
                                 text = if (payoff.maxProfit > 500000) "Unlimited" else "₹${String.format("%.0f", payoff.maxProfit)}",
                                 color = BullishGreen,
@@ -727,7 +1190,7 @@ private fun StrategyPayoffSection(
                             )
                         }
                         Column {
-                            Text(text = "Max Loss", color = TextTertiary, fontSize = 9.sp)
+                            Text(text = "Max Loss (Tail)", color = TextTertiary, fontSize = 9.sp)
                             Text(
                                 text = if (payoff.maxLoss < -500000) "Unlimited" else "₹${String.format("%.0f", abs(payoff.maxLoss))}",
                                 color = BearishRed,
@@ -758,9 +1221,9 @@ private fun StrategyPayoffSection(
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Text(
-                            text = "Breakeven: ${payoff.breakevens.joinToString(", ") { "₹${it.toInt()}" }}",
+                            text = if (payoff.breakevens.isNotEmpty()) "Breakevens: ${payoff.breakevens.joinToString(", ") { "₹${it.toInt()}" }}" else "No Expiry Breakeven Points",
                             color = TextSecondary,
-                            fontSize = 11.sp,
+                            fontSize = 10.sp,
                             fontFamily = FontFamily.Monospace
                         )
                         Text(
@@ -796,7 +1259,7 @@ private fun StrategyPayoffSection(
                                         .padding(horizontal = 6.dp, vertical = 2.dp)
                                 ) {
                                     Text(
-                                        text = leg.action.name,
+                                        text = "${leg.action.name} ${leg.lots}x",
                                         color = if (leg.action == OrderSide.BUY) Color.Black else Color.White,
                                         fontSize = 9.sp,
                                         fontWeight = FontWeight.Bold
@@ -812,7 +1275,7 @@ private fun StrategyPayoffSection(
                             }
 
                             Text(
-                                text = "${leg.lots} Lot (${leg.lots * leg.optionContract.lotSize} qty) @ ₹${String.format("%.2f", leg.optionContract.ltp)}",
+                                text = "${leg.lots * leg.optionContract.lotSize} Qty @ ₹${String.format("%.2f", leg.optionContract.ltp)}",
                                 color = TextSecondary,
                                 fontSize = 11.sp,
                                 fontFamily = FontFamily.Monospace
@@ -824,13 +1287,18 @@ private fun StrategyPayoffSection(
 
                     Button(
                         onClick = onExecuteBasket,
-                        colors = ButtonDefaults.buttonColors(containerColor = NeonCyan),
+                        colors = ButtonDefaults.buttonColors(containerColor = if (selectedStrategy == OptionStrategyType.BATMAN_STRATEGY) BrightGold else NeonCyan),
                         shape = RoundedCornerShape(10.dp),
                         modifier = Modifier.fillMaxWidth().height(44.dp).testTag("execute_strategy_basket_btn")
                     ) {
                         Icon(imageVector = Icons.Default.AddShoppingCart, contentDescription = null, tint = Color.Black, modifier = Modifier.size(18.dp))
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text("Execute Multi-Leg Strategy Basket", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                        Text(
+                            text = if (selectedStrategy == OptionStrategyType.BATMAN_STRATEGY) "Execute 6-Leg Batman Strategy Basket" else "Execute Multi-Leg Strategy Basket",
+                            color = Color.Black,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp
+                        )
                     }
                 }
             }
@@ -842,14 +1310,15 @@ private fun StrategyPayoffSection(
 private fun PayoffGraphCanvas(
     payoffPoints: List<Pair<Double, Double>>,
     breakevens: List<Double>,
+    isBatmanStrategy: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .height(150.dp)
+            .height(170.dp)
             .clip(RoundedCornerShape(8.dp))
-            .background(Color(0xFF06090E))
+            .background(Color(0xFF04060A))
             .padding(8.dp)
     ) {
         Canvas(modifier = Modifier.fillMaxSize()) {
@@ -863,34 +1332,123 @@ private fun PayoffGraphCanvas(
 
             val zeroY = size.height - (((0.0 - minY) / yRange) * size.height).toFloat()
 
+            // Draw Zero PnL Reference Line
             drawLine(
-                color = Color.DarkGray,
+                color = Color.Gray.copy(alpha = 0.5f),
                 start = Offset(0f, zeroY),
                 end = Offset(size.width, zeroY),
                 strokeWidth = 1.5f,
                 pathEffect = PathEffect.dashPathEffect(floatArrayOf(8f, 6f), 0f)
             )
 
-            val path = Path()
+            // Positive Profit Area Path
+            val profitPath = Path()
+            profitPath.moveTo(0f, zeroY)
+
+            // Negative Loss Area Path
+            val lossPath = Path()
+            lossPath.moveTo(0f, zeroY)
+
+            val curvePath = Path()
+
             payoffPoints.forEachIndexed { index, point ->
                 val x = ((point.first - minX) / (maxX - minX) * size.width).toFloat()
                 val y = size.height - (((point.second - minY) / yRange) * size.height).toFloat()
 
-                if (index == 0) path.moveTo(x, y) else path.lineTo(x, y)
+                if (index == 0) curvePath.moveTo(x, y) else curvePath.lineTo(x, y)
+
+                if (point.second >= 0) {
+                    profitPath.lineTo(x, y)
+                } else {
+                    profitPath.lineTo(x, zeroY)
+                }
+
+                if (point.second <= 0) {
+                    lossPath.lineTo(x, y)
+                } else {
+                    lossPath.lineTo(x, zeroY)
+                }
             }
 
+            profitPath.lineTo(size.width, zeroY)
+            profitPath.close()
+
+            lossPath.lineTo(size.width, zeroY)
+            lossPath.close()
+
+            // Draw Profit & Loss Shaded Polygons
+            drawPath(path = profitPath, color = BullishGreen.copy(alpha = 0.22f))
+            drawPath(path = lossPath, color = BearishRed.copy(alpha = 0.22f))
+
+            // Draw Main Payoff Curve Line
             drawPath(
-                path = path,
-                color = NeonCyan,
-                style = Stroke(width = 2.5f)
+                path = curvePath,
+                color = if (isBatmanStrategy) BrightGold else NeonCyan,
+                style = Stroke(width = 3.dp.toPx())
             )
 
+            // Draw Breakeven Points
             breakevens.forEach { be ->
                 val beX = ((be - minX) / (maxX - minX) * size.width).toFloat()
                 drawCircle(
                     color = BrightGold,
-                    radius = 4.dp.toPx(),
+                    radius = 4.5.dp.toPx(),
                     center = Offset(beX, zeroY)
+                )
+                drawCircle(
+                    color = Color.Black,
+                    radius = 2.dp.toPx(),
+                    center = Offset(beX, zeroY)
+                )
+            }
+        }
+
+        // Overlay labels for min strike, max strike, and zero line
+        Column(
+            modifier = Modifier.fillMaxSize(),
+            verticalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    text = if (isBatmanStrategy) "🦇 EAR 1 (PUT PEAK)" else "Max Profit Zone",
+                    color = BullishGreen,
+                    fontSize = 8.sp,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = FontFamily.Monospace
+                )
+                Text(
+                    text = if (isBatmanStrategy) "🦇 EAR 2 (CALL PEAK)" else "PROFIT (₹)",
+                    color = if (isBatmanStrategy) BrightGold else BullishGreen,
+                    fontSize = 8.sp,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = FontFamily.Monospace
+                )
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    text = "₹${payoffPoints.firstOrNull()?.first?.toInt() ?: 0}",
+                    color = TextTertiary,
+                    fontSize = 8.sp,
+                    fontFamily = FontFamily.Monospace
+                )
+                Text(
+                    text = "EXPIRY SPOT PRICE (₹)",
+                    color = TextTertiary,
+                    fontSize = 8.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = "₹${payoffPoints.lastOrNull()?.first?.toInt() ?: 0}",
+                    color = TextTertiary,
+                    fontSize = 8.sp,
+                    fontFamily = FontFamily.Monospace
                 )
             }
         }
@@ -1038,6 +1596,7 @@ fun OptionOrderModal(
     onConfirm: (lots: Int) -> Unit
 ) {
     var lots by remember { mutableStateOf(1) }
+    var orderProductType by remember { mutableStateOf("MIS (Intraday)") }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -1069,6 +1628,28 @@ fun OptionOrderModal(
                     fontSize = 12.sp,
                     fontFamily = FontFamily.Monospace
                 )
+
+                // Product Type (MIS / NRML)
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf("MIS (Intraday)", "NRML (Overnight)").forEach { prod ->
+                        val isSelected = prod == orderProductType
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(if (isSelected) NeonCyan.copy(alpha = 0.2f) else TerminalSurfaceElevated)
+                                .border(1.dp, if (isSelected) NeonCyan else TerminalCardBorder, RoundedCornerShape(4.dp))
+                                .clickable { orderProductType = prod }
+                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                        ) {
+                            Text(
+                                text = prod,
+                                color = if (isSelected) NeonCyan else TextSecondary,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -1114,13 +1695,31 @@ fun OptionOrderModal(
                 }
 
                 val totalAmount = lots * contract.lotSize * contract.ltp
-                Text(
-                    text = "Estimated Premium: ₹${String.format("%.2f", totalAmount)}",
-                    color = BrightGold,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Bold,
-                    fontFamily = FontFamily.Monospace
-                )
+                val approxMargin = if (side == OrderSide.BUY) totalAmount else (contract.strikePrice * contract.lotSize * lots * 0.14)
+
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(TerminalSurfaceElevated)
+                        .padding(8.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(text = if (side == OrderSide.BUY) "Premium Payable:" else "Premium Inflow:", color = TextTertiary, fontSize = 11.sp)
+                        Text(text = "₹${String.format("%.2f", totalAmount)}", color = BrightGold, fontSize = 12.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                    }
+                    Spacer(modifier = Modifier.height(3.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(text = "Required Margin:", color = TextTertiary, fontSize = 11.sp)
+                        Text(text = "₹${String.format("%.2f", approxMargin)}", color = NeonCyan, fontSize = 12.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                    }
+                }
             }
         },
         confirmButton = {
@@ -1128,7 +1727,7 @@ fun OptionOrderModal(
                 onClick = { onConfirm(lots) },
                 colors = ButtonDefaults.buttonColors(containerColor = if (side == OrderSide.BUY) BullishGreen else BearishRed)
             ) {
-                Text(text = "Place Option Order", color = if (side == OrderSide.BUY) Color.Black else Color.White, fontWeight = FontWeight.Bold)
+                Text(text = "Place Option Order (${side.name})", color = if (side == OrderSide.BUY) Color.Black else Color.White, fontWeight = FontWeight.Bold)
             }
         },
         dismissButton = {

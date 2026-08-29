@@ -499,12 +499,26 @@ class MarketDataRepository {
         val atmRow = chain.strikes.find { it.strikePrice == atmStrike } ?: chain.strikes[chain.strikes.size / 2]
         val otmCallRow = chain.strikes.find { it.strikePrice == atmStrike + strikeStep } ?: atmRow
         val farOtmCallRow = chain.strikes.find { it.strikePrice == atmStrike + (2 * strikeStep) } ?: otmCallRow
+        val wingCallRow = chain.strikes.find { it.strikePrice == atmStrike + (4 * strikeStep) } ?: farOtmCallRow
         val otmPutRow = chain.strikes.find { it.strikePrice == atmStrike - strikeStep } ?: atmRow
         val farOtmPutRow = chain.strikes.find { it.strikePrice == atmStrike - (2 * strikeStep) } ?: otmPutRow
+        val wingPutRow = chain.strikes.find { it.strikePrice == atmStrike - (4 * strikeStep) } ?: farOtmPutRow
 
         val legs = mutableListOf<StrategyLeg>()
 
         when (strategyType) {
+            OptionStrategyType.BATMAN_STRATEGY -> {
+                // 6-Leg Double Ratio Broken Wing Spread creating iconic dual peak "Batman Ears"
+                // Put Side Ratio: Buy 1x OTM Put, Sell 2x Far OTM Put, Buy 1x Wing Put
+                legs.add(StrategyLeg(otmPutRow.put, OrderSide.BUY, 1))
+                legs.add(StrategyLeg(farOtmPutRow.put, OrderSide.SELL, 2))
+                legs.add(StrategyLeg(wingPutRow.put, OrderSide.BUY, 1))
+
+                // Call Side Ratio: Buy 1x OTM Call, Sell 2x Far OTM Call, Buy 1x Wing Call
+                legs.add(StrategyLeg(otmCallRow.call, OrderSide.BUY, 1))
+                legs.add(StrategyLeg(farOtmCallRow.call, OrderSide.SELL, 2))
+                legs.add(StrategyLeg(wingCallRow.call, OrderSide.BUY, 1))
+            }
             OptionStrategyType.LONG_CALL -> {
                 legs.add(StrategyLeg(atmRow.call, OrderSide.BUY, 1))
             }
@@ -601,6 +615,7 @@ class MarketDataRepository {
         }
 
         val marginRequired = when (strategyType) {
+            OptionStrategyType.BATMAN_STRATEGY -> (2 * strikeStep * lotSize) + abs(netAmount)
             OptionStrategyType.LONG_CALL, OptionStrategyType.LONG_PUT -> abs(netAmount)
             OptionStrategyType.BULL_CALL_SPREAD, OptionStrategyType.BEAR_PUT_SPREAD -> abs(netAmount)
             OptionStrategyType.SHORT_STRADDLE, OptionStrategyType.SHORT_STRANGLE -> spotPrice * lotSize * 0.15

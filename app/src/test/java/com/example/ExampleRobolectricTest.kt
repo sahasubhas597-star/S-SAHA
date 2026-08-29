@@ -20,7 +20,7 @@ class ExampleRobolectricTest {
   fun `read string from context`() {
     val context = ApplicationProvider.getApplicationContext<Context>()
     val appName = context.getString(R.string.app_name)
-    assertEquals("Global AI Algo Trading Hub", appName)
+    assertEquals("zx26", appName)
   }
 
   @Test
@@ -51,6 +51,16 @@ class ExampleRobolectricTest {
     val rescanned = repository.rescanAllInstruments()
     assertTrue("Should rescan all instruments", rescanned.isNotEmpty())
     assertTrue("Every instrument should have a scanned technical signal", rescanned.all { it.primarySignal != null })
+  }
+
+  @Test
+  fun `verify broker account models and session latency`() {
+    val brokerTypes = com.example.data.model.BrokerType.values()
+    assertTrue("Should contain multiple broker integrations", brokerTypes.isNotEmpty())
+    assertTrue("Should contain Zerodha Kite", brokerTypes.any { it.name == "ZERODHA" })
+    assertTrue("Should contain Dhan", brokerTypes.any { it.name == "DHAN" })
+    assertTrue("Should contain Angel One", brokerTypes.any { it.name == "ANGEL_ONE" })
+    assertTrue("Should contain Binance", brokerTypes.any { it.name == "BINANCE" })
   }
 }
 

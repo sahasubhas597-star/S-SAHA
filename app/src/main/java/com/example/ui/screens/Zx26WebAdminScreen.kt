@@ -39,6 +39,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AdminPanelSettings
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.CurrencyRupee
 import androidx.compose.material.icons.filled.ElectricBolt
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Language
@@ -434,7 +435,7 @@ fun Zx26WebAdminScreen(
                     // Admin Quick Action Bar
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         Button(
                             onClick = { showApiKeyModal = true },
@@ -442,9 +443,21 @@ fun Zx26WebAdminScreen(
                             shape = RoundedCornerShape(6.dp),
                             modifier = Modifier.weight(1f).height(38.dp)
                         ) {
-                            Icon(imageVector = Icons.Default.VpnKey, contentDescription = null, tint = BrightGold, modifier = Modifier.size(14.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("API Secrets", color = BrightGold, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            Icon(imageVector = Icons.Default.VpnKey, contentDescription = null, tint = BrightGold, modifier = Modifier.size(13.dp))
+                            Spacer(modifier = Modifier.width(3.dp))
+                            Text("API Secrets", color = BrightGold, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                        }
+
+                        Button(
+                            onClick = { viewModel.setTab(1) },
+                            colors = ButtonDefaults.buttonColors(containerColor = BrightGold.copy(alpha = 0.2f)),
+                            border = BorderStroke(1.dp, BrightGold),
+                            shape = RoundedCornerShape(6.dp),
+                            modifier = Modifier.weight(1.1f).height(38.dp)
+                        ) {
+                            Icon(imageVector = Icons.Default.CurrencyRupee, contentDescription = null, tint = BrightGold, modifier = Modifier.size(13.dp))
+                            Spacer(modifier = Modifier.width(3.dp))
+                            Text("₹5k License", color = BrightGold, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                         }
 
                         Button(
@@ -453,9 +466,9 @@ fun Zx26WebAdminScreen(
                             shape = RoundedCornerShape(6.dp),
                             modifier = Modifier.weight(1f).height(38.dp)
                         ) {
-                            Icon(imageVector = Icons.Default.PowerSettingsNew, contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("Emergency Halt", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            Icon(imageVector = Icons.Default.PowerSettingsNew, contentDescription = null, tint = Color.White, modifier = Modifier.size(13.dp))
+                            Spacer(modifier = Modifier.width(3.dp))
+                            Text("Halt System", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
@@ -565,6 +578,7 @@ fun Zx26WebAdminScreen(
                         listOf(
                             "TERMINAL" to "Live Web Trader",
                             "GATEWAYS" to "18+ Brokers",
+                            "LICENSE" to "₹5k License & QR",
                             "TELEMETRY" to "System Health",
                             "AUDIT" to "Admin Logs"
                         ).forEach { (tabKey, label) ->
@@ -660,6 +674,54 @@ fun Zx26WebAdminScreen(
                                             )
                                         }
                                     }
+                                }
+                            }
+                        }
+
+                        "LICENSE" -> {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(TerminalSurfaceElevated)
+                                    .padding(12.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column {
+                                        Text("COMMERCIAL STATUS", color = TextTertiary, fontSize = 9.sp)
+                                        Text("Lifetime Enterprise (₹5,000)", color = BrightGold, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(4.dp))
+                                            .background(BullishGreen.copy(alpha = 0.2f))
+                                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                                    ) {
+                                        Text("UNLOCKED", color = BullishGreen, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+
+                                Text(
+                                    text = "Active License: ZX26-PRO8-941A-5000 • Payee UPI: sahasubhas597@okaxis",
+                                    color = TextSecondary,
+                                    fontSize = 10.sp,
+                                    fontFamily = FontFamily.Monospace
+                                )
+
+                                Button(
+                                    onClick = { viewModel.setTab(1) },
+                                    colors = ButtonDefaults.buttonColors(containerColor = BrightGold),
+                                    shape = RoundedCornerShape(6.dp),
+                                    modifier = Modifier.fillMaxWidth().height(36.dp)
+                                ) {
+                                    Icon(imageVector = Icons.Default.CurrencyRupee, contentDescription = null, tint = Color.Black, modifier = Modifier.size(14.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Open Full ₹5,000 License & UPI Hub", color = Color.Black, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                                 }
                             }
                         }

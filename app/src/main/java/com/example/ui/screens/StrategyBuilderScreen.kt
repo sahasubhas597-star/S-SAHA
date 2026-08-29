@@ -222,7 +222,7 @@ fun StrategyBuilderScreen(
 
                     Spacer(modifier = Modifier.height(4.dp))
 
-                    // Action Buttons: Save & Export Pine Script
+                    // Action Buttons: Save & Export Pine Script & Execute Backtest
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -259,8 +259,32 @@ fun StrategyBuilderScreen(
                         ) {
                             Icon(imageVector = Icons.Default.Code, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("TradingView v5", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            Text("PineScript v5", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                         }
+                    }
+
+                    // Direct Execute 10-Year Backtest Button
+                    Button(
+                        onClick = {
+                            val updated = activeStrategy.copy(
+                                stopLossPercent = stopLossSlider.toDouble(),
+                                takeProfitPercent = takeProfitSlider.toDouble(),
+                                trailingStopPercent = trailingStopSlider.toDouble(),
+                                maxRiskPerTradePercent = riskSlider.toDouble(),
+                                isAutoTradingEnabled = autoTradingToggle
+                            )
+                            viewModel.saveStrategy(updated)
+                            viewModel.executeBacktest(strategy = updated)
+                            viewModel.setTab(6) // Switch to Backtest tab
+                            Toast.makeText(context, "Executing 10-Year Backtest...", Toast.LENGTH_SHORT).show()
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = BrightGold),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.fillMaxWidth().testTag("strategy_execute_backtest_btn")
+                    ) {
+                        Icon(imageVector = Icons.Default.Tune, contentDescription = null, tint = Color.Black, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("EXECUTE 10-YEAR BACKTEST", color = Color.Black, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     }
                 }
             }

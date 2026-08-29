@@ -102,6 +102,7 @@ data class OptionChainData(
 )
 
 enum class OptionStrategyType(val title: String, val outlook: String, val legsCount: Int, val description: String) {
+    BATMAN_STRATEGY("Batman Strategy (Dual Ear Profit)", "Rangebound + Dual Peaks", 6, "Double Ratio Spread / Broken Wing Butterfly. High payout peaks on both sides with wide safe range resembling Batman ears."),
     LONG_CALL("Long Call (Naked Bull)", "Bullish", 1, "Buy ATM/OTM Call for explosive upside with strictly limited capital risk."),
     LONG_PUT("Long Put (Naked Bear)", "Bearish", 1, "Buy ATM/OTM Put to profit from market drop with strictly limited capital risk."),
     BULL_CALL_SPREAD("Bull Call Spread", "Moderately Bullish", 2, "Buy ATM Call + Sell OTM Call. Lower cost, defined maximum profit & defined capped risk."),

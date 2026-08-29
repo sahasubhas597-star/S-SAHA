@@ -3,6 +3,7 @@ package com.example.ui.screens
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,12 +16,15 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Shield
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -31,8 +35,12 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -72,6 +80,11 @@ fun BacktestLabScreen(
     val isBacktesting by viewModel.isBacktesting.collectAsState()
     val selectedInstrument by viewModel.selectedInstrument.collectAsState()
     val activeStrategy by viewModel.activeStrategy.collectAsState()
+    val allStrategies by viewModel.strategies.collectAsState()
+    val instruments by viewModel.instruments.collectAsState()
+
+    var selectedCapital by remember { mutableStateOf(100000.0) }
+    var selectedSlippage by remember { mutableStateOf(0.05) }
 
     LazyColumn(
         modifier = modifier
@@ -85,13 +98,13 @@ fun BacktestLabScreen(
             FinancialSafetyBanner(currentMode = ExecutionMode.BACKTEST)
         }
 
-        // Header & Run Controls
+        // Execution & Configuration Control Center
         item {
             Card(
                 colors = CardDefaults.cardColors(containerColor = TerminalSurface),
                 shape = RoundedCornerShape(12.dp),
                 border = androidx.compose.foundation.BorderStroke(1.dp, TerminalCardBorder),
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth().testTag("backtest_control_card")
             ) {
                 Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Row(
@@ -101,9 +114,9 @@ fun BacktestLabScreen(
                     ) {
                         Column {
                             Text(
-                                text = "10-YEAR HISTORICAL BACKTEST",
+                                text = "10-YEAR QUANTITATIVE BACKTEST",
                                 color = TextPrimary,
-                                fontSize = 15.sp,
+                                fontSize = 14.sp,
                                 fontWeight = FontWeight.Bold
                             )
                             Text(
@@ -114,8 +127,14 @@ fun BacktestLabScreen(
                             )
                         }
 
+                        // Primary Execute Button
                         Button(
-                            onClick = { viewModel.runBacktest10Years() },
+                            onClick = {
+                                viewModel.runBacktest10Years(
+                                    initialCapital = selectedCapital,
+                                    slippagePercent = selectedSlippage
+                                )
+                            },
                             colors = ButtonDefaults.buttonColors(containerColor = ElectricIndigo),
                             shape = RoundedCornerShape(8.dp),
                             enabled = !isBacktesting,
@@ -127,10 +146,101 @@ fun BacktestLabScreen(
                                     modifier = Modifier.size(16.dp),
                                     strokeWidth = 2.dp
                                 )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Running...", color = Color.White, fontSize = 11.sp)
                             } else {
                                 Icon(imageVector = Icons.Default.PlayArrow, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
                                 Spacer(modifier = Modifier.width(4.dp))
-                                Text("Run Backtest", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                Text("Run", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+
+                    // Instrument Selector Chips
+                    Text(
+                        text = "SELECT ASSET / INSTRUMENT",
+                        color = BrightGold,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 0.5.sp
+                    )
+                    LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        val popular = listOf("NIFTY 50", "BANKNIFTY", "RELIANCE", "HDFCBANK", "NVDA", "AAPL", "BTC/USD", "TSLA", "SENSEX")
+                        items(popular) { sym ->
+                            val isSelected = selectedInstrument.symbol == sym
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(if (isSelected) NeonCyan.copy(alpha = 0.2f) else TerminalSurfaceElevated)
+                                    .border(1.dp, if (isSelected) NeonCyan else TerminalCardBorder, RoundedCornerShape(6.dp))
+                                    .clickable {
+                                        val inst = instruments.find { it.symbol == sym } ?: selectedInstrument
+                                        viewModel.selectInstrument(inst)
+                                        viewModel.executeBacktest(
+                                            instrument = inst,
+                                            initialCapital = selectedCapital,
+                                            slippagePercent = selectedSlippage
+                                        )
+                                    }
+                                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                                    .testTag("backtest_chip_$sym")
+                            ) {
+                                Text(
+                                    text = sym,
+                                    color = if (isSelected) NeonCyan else TextSecondary,
+                                    fontSize = 10.sp,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                )
+                            }
+                        }
+                    }
+
+                    // Capital Selection Chips
+                    Text(
+                        text = "STARTING CAPITAL ALLOCATION",
+                        color = BrightGold,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 0.5.sp
+                    )
+                    LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        val capitalOptions = listOf(10000.0, 50000.0, 100000.0, 250000.0, 1000000.0)
+                        items(capitalOptions) { cap ->
+                            val isSelected = selectedCapital == cap
+                            val label = when (cap) {
+                                10000.0 -> "$10k"
+                                50000.0 -> "$50k"
+                                100000.0 -> "$100k"
+                                250000.0 -> "$250k"
+                                else -> "$1M"
+                            }
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(if (isSelected) BrightGold.copy(alpha = 0.2f) else TerminalSurfaceElevated)
+                                    .border(1.dp, if (isSelected) BrightGold else TerminalCardBorder, RoundedCornerShape(6.dp))
+                                    .clickable {
+                                        selectedCapital = cap
+                                        viewModel.runBacktest10Years(
+                                            initialCapital = cap,
+                                            slippagePercent = selectedSlippage
+                                        )
+                                    }
+                                    .padding(horizontal = 10.dp, vertical = 4.dp)
+                                    .testTag("backtest_capital_$label")
+                            ) {
+                                Text(
+                                    text = label,
+                                    color = if (isSelected) BrightGold else TextSecondary,
+                                    fontSize = 10.sp,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                )
                             }
                         }
                     }
@@ -148,6 +258,33 @@ fun BacktestLabScreen(
                         Text(text = "Trail: ${activeStrategy.trailingStopPercent}%", color = BrightGold, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                         Text(text = "Risk/Trd: ${activeStrategy.maxRiskPerTradePercent}%", color = NeonCyan, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                     }
+
+                    // Large Prominent Action Bar for Explicit Execution
+                    Button(
+                        onClick = {
+                            viewModel.runBacktest10Years(
+                                initialCapital = selectedCapital,
+                                slippagePercent = selectedSlippage
+                            )
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = if (isBacktesting) ElectricIndigo.copy(alpha = 0.5f) else ElectricIndigo),
+                        shape = RoundedCornerShape(8.dp),
+                        enabled = !isBacktesting,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(44.dp)
+                            .testTag("execute_backtest_btn")
+                    ) {
+                        if (isBacktesting) {
+                            CircularProgressIndicator(color = Color.White, modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Simulating 10 Years Historical Trades...", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        } else {
+                            Icon(imageVector = Icons.Default.PlayArrow, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("EXECUTE 10-YEAR HISTORICAL BACKTEST", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
                 }
             }
         }
@@ -162,7 +299,7 @@ fun BacktestLabScreen(
                     colors = CardDefaults.cardColors(containerColor = TerminalSurface),
                     shape = RoundedCornerShape(12.dp),
                     border = androidx.compose.foundation.BorderStroke(1.dp, TerminalCardBorder),
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth().testTag("backtest_equity_curve_card")
                 ) {
                     Column(modifier = Modifier.padding(12.dp)) {
                         Row(
@@ -177,7 +314,7 @@ fun BacktestLabScreen(
                                 fontWeight = FontWeight.Bold
                             )
                             Text(
-                                text = "Initial: $100k → Final: $${String.format("%,.0f", m.finalCapital)}",
+                                text = "Initial: $${String.format("%,.0f", selectedCapital)} → Final: $${String.format("%,.0f", m.finalCapital)}",
                                 color = BullishGreen,
                                 fontSize = 11.sp,
                                 fontFamily = FontFamily.Monospace,
@@ -344,11 +481,11 @@ fun BacktestLabScreen(
                 Button(
                     onClick = {
                         viewModel.requestAiStressTest()
-                        viewModel.setTab(7) // Go to AI Copilot
+                        viewModel.setTab(10) // Go to AI Copilot tab
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = NeonCyan),
                     shape = RoundedCornerShape(10.dp),
-                    modifier = Modifier.fillMaxWidth().height(44.dp)
+                    modifier = Modifier.fillMaxWidth().height(44.dp).testTag("ai_stress_test_btn")
                 ) {
                     Icon(imageVector = Icons.Default.AutoAwesome, contentDescription = null, tint = Color.Black)
                     Spacer(modifier = Modifier.width(6.dp))
@@ -485,3 +622,4 @@ fun EquityCurveCanvas(
         drawPath(mainPath, color = NeonCyan, style = Stroke(width = 2.5f))
     }
 }
+

@@ -77,6 +77,7 @@ import com.example.ui.components.TickerTape
 import com.example.ui.theme.BearishRed
 import com.example.ui.theme.BrightGold
 import com.example.ui.theme.BullishGreen
+import com.example.ui.theme.ElectricIndigo
 import com.example.ui.theme.NeonCyan
 import com.example.ui.theme.TerminalCardBorder
 import com.example.ui.theme.TerminalSurface
@@ -84,6 +85,7 @@ import com.example.ui.theme.TerminalSurfaceElevated
 import com.example.ui.theme.TextPrimary
 import com.example.ui.theme.TextSecondary
 import com.example.ui.theme.TextTertiary
+import androidx.compose.material.icons.filled.PlayArrow
 import com.example.ui.viewmodel.MainViewModel
 
 @Composable
@@ -748,6 +750,26 @@ fun MarketWorkstationScreen(
                     Spacer(modifier = Modifier.width(6.dp))
                     Text("SELL / SHORT", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
                 }
+            }
+
+            Spacer(modifier = Modifier.height(6.dp))
+
+            // Direct Backtest Shortcut
+            Button(
+                onClick = {
+                    viewModel.executeBacktest(instrument = selectedInstrument)
+                    viewModel.setTab(6) // Switch to Backtest tab
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = ElectricIndigo),
+                shape = RoundedCornerShape(10.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(42.dp)
+                    .testTag("workstation_execute_backtest_btn")
+            ) {
+                Icon(imageVector = Icons.Default.PlayArrow, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                Spacer(modifier = Modifier.width(6.dp))
+                Text("Execute 10-Yr Backtest on ${selectedInstrument.symbol}", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp)
             }
         }
 

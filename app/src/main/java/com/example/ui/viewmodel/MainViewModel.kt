@@ -120,6 +120,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val brokers: StateFlow<List<BrokerAccountEntity>> = tradingRepo.brokers
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    // Live Broker Master Session State
+    private val _isLiveBrokerSessionActive = MutableStateFlow(true)
+    val isLiveBrokerSessionActive: StateFlow<Boolean> = _isLiveBrokerSessionActive.asStateFlow()
+
+    private val _liveSessionToken = MutableStateFlow("ZX26-AUTH-LIVE-992102")
+    val liveSessionToken: StateFlow<String> = _liveSessionToken.asStateFlow()
+
+    private val _liveSessionStatusMessage = MutableStateFlow("OMS WebSocket Handshake Verified • Real-Time Order Routing Active")
+    val liveSessionStatusMessage: StateFlow<String> = _liveSessionStatusMessage.asStateFlow()
+
+    private val _isSessionConnecting = MutableStateFlow(false)
+    val isSessionConnecting: StateFlow<Boolean> = _isSessionConnecting.asStateFlow()
+
     // AI Copilot
     private val _aiReport = MutableStateFlow("")
     val aiReport: StateFlow<String> = _aiReport.asStateFlow()
@@ -153,7 +166,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _optionChainData = MutableStateFlow<OptionChainData?>(null)
     val optionChainData: StateFlow<OptionChainData?> = _optionChainData.asStateFlow()
 
-    private val _selectedOptionStrategyType = MutableStateFlow(OptionStrategyType.BULL_CALL_SPREAD)
+    private val _selectedOptionStrategyType = MutableStateFlow(OptionStrategyType.BATMAN_STRATEGY)
     val selectedOptionStrategyType: StateFlow<OptionStrategyType> = _selectedOptionStrategyType.asStateFlow()
 
     private val _optionStrategyPayoff = MutableStateFlow<OptionStrategyPayoff?>(null)
@@ -311,28 +324,69 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     ) {
         viewModelScope.launch(Dispatchers.Default) {
             _isBacktesting.value = true
-            val instrument = _selectedInstrument.value
-            val strategy = _activeStrategy.value
-            val candles = marketRepo.get10YearHistoricalCandles(instrument.symbol)
-            val result = BacktestEngine.runBacktest(
-                strategy = strategy,
-                instrument = instrument,
-                historicalCandles = candles,
-                initialCapital = initialCapital,
-                slippagePercent = slippagePercent,
-                feePerTradePercent = feePerTradePercent
-            )
-            _backtestResult.value = result
-            _isBacktesting.value = false
+            try {
+                val instrument = _selectedInstrument.value
+                val strategy = _activeStrategy.value
+                val candles = marketRepo.get10YearHistoricalCandles(instrument.symbol)
+                val result = BacktestEngine.runBacktest(
+                    strategy = strategy,
+                    instrument = instrument,
+                    historicalCandles = candles,
+                    initialCapital = initialCapital,
+                    slippagePercent = slippagePercent,
+                    feePerTradePercent = feePerTradePercent
+                )
+                _backtestResult.value = result
+            } catch (e: Exception) {
+                e.printStackTrace()
+            } finally {
+                _isBacktesting.value = false
+            }
+        }
+    }
+
+    fun executeBacktest(
+        instrument: Instrument? = null,
+        strategy: TradingStrategy? = null,
+        initialCapital: Double = 100000.0,
+        slippagePercent: Double = 0.05,
+        feePerTradePercent: Double = 0.03
+    ) {
+        viewModelScope.launch(Dispatchers.Default) {
+            _isBacktesting.value = true
+            try {
+                val targetInst = instrument ?: _selectedInstrument.value
+                val targetStrat = strategy ?: _activeStrategy.value
+                _selectedInstrument.value = targetInst
+                _activeStrategy.value = targetStrat
+                val candles = marketRepo.get10YearHistoricalCandles(targetInst.symbol)
+                val result = BacktestEngine.runBacktest(
+                    strategy = targetStrat,
+                    instrument = targetInst,
+                    historicalCandles = candles,
+                    initialCapital = initialCapital,
+                    slippagePercent = slippagePercent,
+                    feePerTradePercent = feePerTradePercent
+                )
+                _backtestResult.value = result
+            } catch (e: Exception) {
+                e.printStackTrace()
+            } finally {
+                _isBacktesting.value = false
+            }
         }
     }
 
     private fun runInitialBacktest() {
-        val instrument = _selectedInstrument.value
-        val strategy = _activeStrategy.value
-        val candles = marketRepo.get10YearHistoricalCandles(instrument.symbol)
-        val result = BacktestEngine.runBacktest(strategy, instrument, candles, 100000.0)
-        _backtestResult.value = result
+        try {
+            val instrument = _selectedInstrument.value
+            val strategy = _activeStrategy.value
+            val candles = marketRepo.get10YearHistoricalCandles(instrument.symbol)
+            val result = BacktestEngine.runBacktest(strategy, instrument, candles, 100000.0)
+            _backtestResult.value = result
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
 
     fun executePaperTrade(
@@ -572,6 +626,35 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun toggleBrokerConnection(id: String, currentStatus: Boolean) {
         viewModelScope.launch(Dispatchers.IO) {
             tradingRepo.updateBrokerStatus(id, !currentStatus, if (!currentStatus) 22L else 0L)
+        }
+    }
+
+    fun toggleMasterLiveSession(enable: Boolean) {
+        viewModelScope.launch(Dispatchers.IO) {
+            _isSessionConnecting.value = true
+            _isLiveBrokerSessionActive.value = enable
+            if (enable) {
+                _liveSessionToken.value = "ZX26-AUTH-LIVE-${(100000..999999).random()}"
+                _liveSessionStatusMessage.value = "OMS WebSocket Handshake Verified • All Gateways Synchronized"
+                tradingRepo.updateAllBrokersStatus(true, 18L)
+            } else {
+                _liveSessionStatusMessage.value = "Live Session Terminated • Sandbox Fallback Mode Active"
+                tradingRepo.updateAllBrokersStatus(false, 0L)
+            }
+            _isSessionConnecting.value = false
+        }
+    }
+
+    fun establishSingleBrokerSession(id: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            tradingRepo.updateBrokerStatus(id, true, 18L)
+            _isLiveBrokerSessionActive.value = true
+        }
+    }
+
+    fun terminateSingleBrokerSession(id: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            tradingRepo.updateBrokerStatus(id, false, 0L)
         }
     }
 

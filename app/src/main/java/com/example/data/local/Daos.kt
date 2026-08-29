@@ -74,6 +74,9 @@ interface BrokerDao {
     @Query("UPDATE broker_accounts SET isConnected = :connected, pingLatencyMs = :latency WHERE id = :id")
     suspend fun updateConnectionStatus(id: String, connected: Boolean, latency: Long)
 
+    @Query("UPDATE broker_accounts SET isConnected = :connected, pingLatencyMs = :latency")
+    suspend fun updateAllBrokersStatus(connected: Boolean, latency: Long)
+
     @Query("DELETE FROM broker_accounts WHERE id = :id")
     suspend fun deleteBroker(id: String)
 }

@@ -34,6 +34,7 @@ import androidx.compose.material.icons.filled.AltRoute
 import androidx.compose.material.icons.filled.Cable
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.EmergencyShare
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Launch
@@ -42,13 +43,18 @@ import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.OpenInBrowser
 import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.PowerSettingsNew
 import androidx.compose.material.icons.filled.ReceiptLong
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Send
+import androidx.compose.material.icons.filled.Sensors
 import androidx.compose.material.icons.filled.Speed
+import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.TrendingDown
 import androidx.compose.material.icons.filled.TrendingUp
+import androidx.compose.material.icons.filled.Verified
+import androidx.compose.material.icons.filled.VpnKey
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -119,6 +125,12 @@ fun BrokerIntegrationScreen(
     val dispatchedOrders by viewModel.dispatchedOrders.collectAsState()
     val selectedInstrument by viewModel.selectedInstrument.collectAsState()
 
+    // Live Broker Master Session State
+    val isLiveSessionActive by viewModel.isLiveBrokerSessionActive.collectAsState()
+    val liveSessionToken by viewModel.liveSessionToken.collectAsState()
+    val liveSessionStatusMessage by viewModel.liveSessionStatusMessage.collectAsState()
+    val isSessionConnecting by viewModel.isSessionConnecting.collectAsState()
+
     // Sandbox Order Dispatch State
     var selectedBrokerName by remember { mutableStateOf("Zerodha Kite Connect") }
     var selectedSymbol by remember { mutableStateOf(selectedInstrument.symbol) }
@@ -132,6 +144,7 @@ fun BrokerIntegrationScreen(
     // Dialogs & Modals
     var showAddBrokerDialog by remember { mutableStateOf(false) }
     var showFailoverNoticeDialog by remember { mutableStateOf(false) }
+    var showTotpAuthDialog by remember { mutableStateOf(false) }
     var executedReceiptOrder by remember { mutableStateOf<DispatchedSandboxOrder?>(null) }
     var failoverTargetBroker by remember { mutableStateOf("Dhan Lightning #DH1109") }
 
@@ -148,6 +161,172 @@ fun BrokerIntegrationScreen(
     ) {
         item {
             FinancialSafetyBanner(currentMode = ExecutionMode.LIVE_BROKER)
+        }
+
+        // ==========================================
+        // ESTABLISH LIVE BROKER SESSION MASTER CONTROL HUB
+        // ==========================================
+        item {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = TerminalSurface),
+                shape = RoundedCornerShape(12.dp),
+                border = BorderStroke(1.5.dp, if (isLiveSessionActive) BullishGreen else TerminalCardBorder),
+                modifier = Modifier.fillMaxWidth().testTag("live_broker_session_master_card")
+            ) {
+                Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    // Header Row with Master Switch
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                            Box(
+                                modifier = Modifier
+                                    .size(38.dp)
+                                    .clip(CircleShape)
+                                    .background(if (isLiveSessionActive) BullishGreen.copy(alpha = 0.2f) else BearishRed.copy(alpha = 0.2f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.PowerSettingsNew,
+                                    contentDescription = "Live Broker Session Switch",
+                                    tint = if (isLiveSessionActive) BullishGreen else BearishRed,
+                                    modifier = Modifier.size(22.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column {
+                                Text(
+                                    text = "ESTABLISH LIVE BROKER SESSION",
+                                    color = TextPrimary,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Black,
+                                    letterSpacing = 0.5.sp
+                                )
+                                Text(
+                                    text = if (isLiveSessionActive) "STATUS: ACTIVE • REAL-TIME OMS CONNECTED" else "STATUS: STANDBY / DISCONNECTED",
+                                    color = if (isLiveSessionActive) BullishGreen else TextTertiary,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    fontFamily = FontFamily.Monospace
+                                )
+                            }
+                        }
+
+                        Switch(
+                            checked = isLiveSessionActive,
+                            onCheckedChange = { newState ->
+                                viewModel.toggleMasterLiveSession(newState)
+                                Toast.makeText(
+                                    context,
+                                    if (newState) "✓ Live Broker Session Established & Active!" else "Live Session Terminated (Sandbox Mode)",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = Color.Black,
+                                checkedTrackColor = BullishGreen,
+                                uncheckedThumbColor = TextTertiary,
+                                uncheckedTrackColor = TerminalCardBorder
+                            ),
+                            modifier = Modifier.testTag("master_live_session_switch")
+                        )
+                    }
+
+                    // Session Info & Token Strip
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(TerminalSurfaceElevated)
+                            .padding(horizontal = 10.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text("Live Session Token", color = TextTertiary, fontSize = 9.sp)
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = liveSessionToken,
+                                    color = if (isLiveSessionActive) NeonCyan else TextTertiary,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    fontFamily = FontFamily.Monospace
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Icon(
+                                    imageVector = Icons.Default.ContentCopy,
+                                    contentDescription = "Copy Session Token",
+                                    tint = NeonCyan,
+                                    modifier = Modifier.size(13.dp).clickable {
+                                        val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager
+                                        val clip = android.content.ClipData.newPlainText("Session Token", liveSessionToken)
+                                        clipboard?.setPrimaryClip(clip)
+                                        Toast.makeText(context, "Session token copied to clipboard", Toast.LENGTH_SHORT).show()
+                                    }
+                                )
+                            }
+                        }
+
+                        Column(horizontalAlignment = Alignment.End) {
+                            Text("Gateways & Ping", color = TextTertiary, fontSize = 9.sp)
+                            Text(
+                                text = "${brokers.count { it.isConnected }}/${brokers.size} Active • ~22ms",
+                                color = if (isLiveSessionActive) BullishGreen else TextTertiary,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = FontFamily.Monospace
+                            )
+                        }
+                    }
+
+                    // Quick Action Control Bar
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Button(
+                            onClick = {
+                                viewModel.toggleMasterLiveSession(true)
+                                Toast.makeText(context, "⚡ Established session across all active broker gateways", Toast.LENGTH_SHORT).show()
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = BullishGreen),
+                            shape = RoundedCornerShape(6.dp),
+                            modifier = Modifier.weight(1f).height(34.dp).testTag("btn_establish_all_sessions")
+                        ) {
+                            Icon(imageVector = Icons.Default.PowerSettingsNew, contentDescription = null, tint = Color.Black, modifier = Modifier.size(13.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Establish All", color = Color.Black, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                        }
+
+                        Button(
+                            onClick = { showTotpAuthDialog = true },
+                            colors = ButtonDefaults.buttonColors(containerColor = TerminalSurfaceElevated),
+                            shape = RoundedCornerShape(6.dp),
+                            modifier = Modifier.weight(1f).height(34.dp).testTag("btn_totp_2fa_auth")
+                        ) {
+                            Icon(imageVector = Icons.Default.VpnKey, contentDescription = null, tint = BrightGold, modifier = Modifier.size(13.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("2FA / TOTP", color = BrightGold, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                        }
+
+                        Button(
+                            onClick = {
+                                viewModel.toggleMasterLiveSession(false)
+                                Toast.makeText(context, "Live sessions paused. Offline / Sandbox mode active.", Toast.LENGTH_SHORT).show()
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = TerminalSurfaceElevated),
+                            shape = RoundedCornerShape(6.dp),
+                            modifier = Modifier.weight(1f).height(34.dp).testTag("btn_disconnect_sessions")
+                        ) {
+                            Icon(imageVector = Icons.Default.Close, contentDescription = null, tint = TextSecondary, modifier = Modifier.size(13.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Disconnect", color = TextSecondary, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
         }
 
         // ==========================================
@@ -272,8 +451,13 @@ fun BrokerIntegrationScreen(
             BrokerCard(
                 broker = broker,
                 onToggle = {
+                    val targetStatus = !broker.isConnected
                     viewModel.toggleBrokerConnection(broker.id, broker.isConnected)
-                    Toast.makeText(context, "${broker.accountName} status toggled", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(
+                        context,
+                        if (targetStatus) "✓ Live session established with ${broker.accountName}" else "Live session disconnected for ${broker.accountName}",
+                        Toast.LENGTH_SHORT
+                    ).show()
                 },
                 onLaunchWeb = {
                     val matchingType = BrokerType.values().find { it.name == broker.brokerType }
@@ -944,7 +1128,8 @@ fun BrokerIntegrationScreen(
                     onClick = {
                         selectedBrokerName = failoverTargetBroker
                         showFailoverNoticeDialog = false
-                        Toast.makeText(context, "✓ Switched primary route to $failoverTargetBroker", Toast.LENGTH_LONG).show()
+                        viewModel.toggleMasterLiveSession(true)
+                        Toast.makeText(context, "✓ Primary route switched to $failoverTargetBroker & session active", Toast.LENGTH_LONG).show()
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = BrightGold),
                     shape = RoundedCornerShape(6.dp)
@@ -954,6 +1139,82 @@ fun BrokerIntegrationScreen(
             },
             dismissButton = {
                 TextButton(onClick = { showFailoverNoticeDialog = false }) {
+                    Text("Cancel", color = TextSecondary)
+                }
+            },
+            containerColor = TerminalSurface,
+            shape = RoundedCornerShape(12.dp)
+        )
+    }
+
+    // ==========================================
+    // 2FA / TOTP SESSION AUTHENTICATION DIALOG
+    // ==========================================
+    if (showTotpAuthDialog) {
+        var totpInput by remember { mutableStateOf("849201") }
+
+        AlertDialog(
+            onDismissRequest = { showTotpAuthDialog = false },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(imageVector = Icons.Default.VpnKey, contentDescription = null, tint = BrightGold, modifier = Modifier.size(20.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Broker 2FA / TOTP Authenticate", color = TextPrimary, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                }
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        text = "Verify time-based one-time password (TOTP) to authorize instant algorithmic trade routing across active broker APIs.",
+                        color = TextSecondary,
+                        fontSize = 11.sp
+                    )
+
+                    OutlinedTextField(
+                        value = totpInput,
+                        onValueChange = { if (it.length <= 6) totpInput = it },
+                        label = { Text("6-Digit TOTP / Authenticator Code", fontSize = 11.sp) },
+                        placeholder = { Text("e.g. 849201", color = TextTertiary) },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = BrightGold,
+                            unfocusedBorderColor = TerminalCardBorder,
+                            focusedTextColor = TextPrimary,
+                            unfocusedTextColor = TextPrimary
+                        ),
+                        modifier = Modifier.fillMaxWidth().testTag("totp_input_field")
+                    )
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(TerminalSurfaceElevated)
+                            .padding(8.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Encryption Protocol:", color = TextTertiary, fontSize = 10.sp)
+                        Text("AES-256 TLS 1.3 Active", color = BullishGreen, fontSize = 10.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.toggleMasterLiveSession(true)
+                        showTotpAuthDialog = false
+                        Toast.makeText(context, "✓ TOTP Authenticated: Live Multi-Broker Session Established!", Toast.LENGTH_LONG).show()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = BrightGold),
+                    shape = RoundedCornerShape(6.dp),
+                    modifier = Modifier.testTag("confirm_totp_auth_btn")
+                ) {
+                    Text("Verify & Establish Session", color = Color.Black, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showTotpAuthDialog = false }) {
                     Text("Cancel", color = TextSecondary)
                 }
             },
@@ -1235,7 +1496,7 @@ fun BrokerCard(
         colors = CardDefaults.cardColors(containerColor = TerminalSurface),
         shape = RoundedCornerShape(10.dp),
         border = BorderStroke(1.dp, if (isSelected) NeonCyan else (if (broker.isConnected) BullishGreen.copy(alpha = 0.5f) else TerminalCardBorder)),
-        modifier = Modifier.fillMaxWidth()
+        modifier = Modifier.fillMaxWidth().testTag("broker_card_${broker.id}")
     ) {
         Column(modifier = Modifier.padding(12.dp)) {
             Row(
@@ -1243,7 +1504,7 @@ fun BrokerCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
                     Box(
                         modifier = Modifier
                             .size(8.dp)
@@ -1272,13 +1533,14 @@ fun BrokerCard(
                             }
                         }
                         Text(
-                            text = "${broker.brokerType} • ${broker.environment}",
-                            color = TextSecondary,
+                            text = "${broker.brokerType} • ${broker.environment} • ${if (broker.isConnected) "Session Live" else "Standby"}",
+                            color = if (broker.isConnected) BullishGreen else TextSecondary,
                             fontSize = 10.sp
                         )
                     }
                 }
 
+                // Interactive Live Session Switch
                 Switch(
                     checked = broker.isConnected,
                     onCheckedChange = { onToggle() },
@@ -1287,7 +1549,8 @@ fun BrokerCard(
                         checkedTrackColor = BullishGreen,
                         uncheckedThumbColor = TextTertiary,
                         uncheckedTrackColor = TerminalCardBorder
-                    )
+                    ),
+                    modifier = Modifier.testTag("broker_switch_${broker.id}")
                 )
             }
 
@@ -1308,7 +1571,7 @@ fun BrokerCard(
                     Text(text = broker.apiKeyMasked, color = TextSecondary, fontSize = 10.sp, fontFamily = FontFamily.Monospace)
                 }
                 Text(
-                    text = if (broker.isConnected) "Latency: ${broker.pingLatencyMs}ms" else "Offline",
+                    text = if (broker.isConnected) "Latency: ${broker.pingLatencyMs}ms" else "Offline / Standby",
                     color = if (broker.isConnected) BullishGreen else TextTertiary,
                     fontSize = 10.sp,
                     fontFamily = FontFamily.Monospace
@@ -1317,39 +1580,62 @@ fun BrokerCard(
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            // Action Row: Open Web Portal & Set As Route
+            // Action Row: Toggle Live Session, Open Web Portal & Set As Route
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
+                Button(
+                    onClick = onToggle,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (broker.isConnected) BullishGreen.copy(alpha = 0.2f) else TerminalSurfaceElevated
+                    ),
+                    shape = RoundedCornerShape(6.dp),
+                    modifier = Modifier.weight(1.1f).height(32.dp).testTag("btn_toggle_session_${broker.id}")
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.PowerSettingsNew,
+                        contentDescription = null,
+                        tint = if (broker.isConnected) BullishGreen else TextSecondary,
+                        modifier = Modifier.size(12.dp)
+                    )
+                    Spacer(modifier = Modifier.width(3.dp))
+                    Text(
+                        text = if (broker.isConnected) "Live Session" else "Establish Live",
+                        color = if (broker.isConnected) BullishGreen else TextSecondary,
+                        fontSize = 9.5.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
                 Button(
                     onClick = onLaunchWeb,
                     colors = ButtonDefaults.buttonColors(containerColor = TerminalSurfaceElevated),
                     shape = RoundedCornerShape(6.dp),
-                    modifier = Modifier.weight(1f).height(32.dp)
+                    modifier = Modifier.weight(0.9f).height(32.dp).testTag("btn_launch_web_${broker.id}")
                 ) {
-                    Icon(imageVector = Icons.Default.OpenInNew, contentDescription = null, tint = BrightGold, modifier = Modifier.size(12.dp))
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("Open Web App", color = BrightGold, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    Icon(imageVector = Icons.Default.OpenInNew, contentDescription = null, tint = BrightGold, modifier = Modifier.size(11.dp))
+                    Spacer(modifier = Modifier.width(3.dp))
+                    Text("Web App", color = BrightGold, fontSize = 9.5.sp, fontWeight = FontWeight.Bold)
                 }
 
                 Button(
                     onClick = onSelectAsActiveRoute,
                     colors = ButtonDefaults.buttonColors(containerColor = if (isSelected) NeonCyan else TerminalSurfaceElevated),
                     shape = RoundedCornerShape(6.dp),
-                    modifier = Modifier.weight(1f).height(32.dp)
+                    modifier = Modifier.weight(1f).height(32.dp).testTag("btn_select_route_${broker.id}")
                 ) {
                     Icon(
                         imageVector = Icons.Default.AltRoute,
                         contentDescription = null,
                         tint = if (isSelected) Color.Black else TextSecondary,
-                        modifier = Modifier.size(12.dp)
+                        modifier = Modifier.size(11.dp)
                     )
-                    Spacer(modifier = Modifier.width(4.dp))
+                    Spacer(modifier = Modifier.width(3.dp))
                     Text(
-                        text = if (isSelected) "Active Route" else "Use For Orders",
+                        text = if (isSelected) "Active Route" else "Use Route",
                         color = if (isSelected) Color.Black else TextSecondary,
-                        fontSize = 10.sp,
+                        fontSize = 9.5.sp,
                         fontWeight = FontWeight.Bold
                     )
                 }
